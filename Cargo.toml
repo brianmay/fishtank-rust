@@ -1,12 +1,12 @@
 [package]
-name = "rust-esp32-std-demo"
+name = "fishtank-rust"
 version = "0.29.0"
-authors = ["ivmarkov"]
+authors = ["brianmay"]
 edition = "2018"
 categories = ["embedded", "hardware-support"]
 keywords = ["embedded", "svc", "idf", "esp-idf", "esp32"]
-description = "A demo binary crate for the ESP32 and ESP-IDF, which connects to WiFi, Ethernet, drives a small HTTP server and draws on a LED screen"
-repository = "https://github.com/ivmarkov/rust-esp32-std-demo"
+description = "Monitor fishtank rust"
+repository = "https://github.com/brianmay/fishtank-rust"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 
