@@ -32,8 +32,8 @@ use esp_idf_hal::prelude::*;
 
 use esp_idf_sys::EspError;
 
-const SSID: &str = env!("RUST_ESP32_STD_DEMO_WIFI_SSID");
-const PASS: &str = env!("RUST_ESP32_STD_DEMO_WIFI_PASS");
+const SSID: &str = env!("WIFI_SSID");
+const PASS: &str = env!("WIFI_PASS");
 
 #[derive(Serialize, Debug)]
 struct MqttData {
