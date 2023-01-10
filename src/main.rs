@@ -39,15 +39,11 @@ const PASS: &str = env!("WIFI_PASS");
 struct MqttData {
     distance: u16,
     temperature: f32,
-    tds: Option<f32>,
+    tds: f32,
 }
 
 fn main() -> Result<()> {
     esp_idf_sys::link_patches();
-
-    test_print();
-
-    test_atomics();
 
     // Bind the log crate to the ESP Logging facilities
     esp_idf_svc::log::EspLogger::initialize_default();
@@ -97,32 +93,29 @@ fn main() -> Result<()> {
     }
 
     const COUNT: usize = 30;
-    let mut tdc_buffer: VecDeque<u16> = VecDeque::with_capacity(COUNT);
+    let mut tds_buffer: VecDeque<u16> = VecDeque::with_capacity(COUNT);
     let mut last_publish = Instant::now() - Duration::from_secs(60);
     loop {
         info!("-----------------------");
-        info!("Hello, world!");
-
         let distance = distance.load(Ordering::Relaxed);
-        info!("distance: {}", distance);
-
         let temperature = read_temperature(&mut temperature_bus, address);
-        info!("temperature: {:?}", temperature);
+        let tds = read_tds(&mut adc, &mut a2, &mut tds_buffer, temperature);
 
-        let tds = read_tds(&mut adc, &mut a2, &mut tdc_buffer, temperature);
-        info!("TDS: {:?}", tds);
+        if tds_buffer.len() >= 15 {
+            let data = MqttData {
+                distance,
+                temperature,
+                tds,
+            };
 
-        let data = MqttData {
-            distance,
-            temperature,
-            tds,
-        };
+            info!("{data:?}");
 
-        info!("{data:?}");
-
-        if last_publish.elapsed() > Duration::from_secs(60) {
-            last_publish = Instant::now();
-            publish_data(data, &mut client);
+            if last_publish.elapsed() > Duration::from_secs(60) {
+                last_publish = Instant::now();
+                publish_data(data, &mut client);
+            }
+        } else {
+            info!("waiting for more tds samples");
         }
 
         thread::sleep(Duration::from_secs(1));
@@ -153,7 +146,7 @@ fn read_tds(
     a2: &mut AdcChannelDriver<gpio::Gpio7, Atten0dB<adc::ADC1>>,
     tdc_buffer: &mut VecDeque<u16>,
     temperature: f32,
-) -> Option<f32> {
+) -> f32 {
     let value = adc.read(a2).unwrap();
     info!("TDS (raw): {}", value);
     if tdc_buffer.len() >= tdc_buffer.capacity() {
@@ -161,24 +154,17 @@ fn read_tds(
     }
     tdc_buffer.push_back(value);
 
-    // Wait until we have enough samples.
-    if tdc_buffer.len() < tdc_buffer.capacity() / 2 {
-        return None;
-    };
-
     let medium = median(tdc_buffer.make_contiguous());
     info!("TDS (medium): {tdc_buffer:?} {}", medium);
     let medium = f32::from(medium) * 3.3 / 4096.0;
-    info!("TDS (volt medium): {tdc_buffer:?} {}", medium);
     let coefficient = 1.0 + 0.02 * (temperature - 25.0);
-    info!("TDS (coefficient): {}", coefficient);
     let compensation = medium / coefficient;
-    info!("TDS (compensation): {}", compensation);
+    let tds = 133.42 * compensation * compensation * compensation
+        - 255.86 * compensation * compensation
+        + 857.39 * compensation;
+    info!("TDS: {medium} {coefficient} {compensation} {tds}");
 
-    Some(
-        133.42 * compensation * compensation * compensation - 255.86 * compensation * compensation
-            + 857.39 * compensation,
-    )
+    tds
 }
 
 fn read_temperature(
@@ -187,29 +173,28 @@ fn read_temperature(
 ) -> f32 {
     let mut buf: [u8; 2] = [0; 2];
 
-    loop {
-        one_wire_bus
-            .send_command(0x44, Some(&address), &mut delay::Ets)
-            .unwrap();
-        // thread::sleep(Duration::from_millis(100));
-        one_wire_bus
-            .send_command(0xBE, Some(&address), &mut delay::Ets)
-            .unwrap();
-        one_wire_bus.read_bytes(&mut buf, &mut delay::Ets).unwrap();
-        one_wire_bus.reset(&mut delay::Ets).unwrap();
+    // loop {
+    one_wire_bus
+        .send_command(0x44, Some(&address), &mut delay::Ets)
+        .unwrap();
+    thread::sleep(Duration::from_millis(750));
+    one_wire_bus
+        .send_command(0xBE, Some(&address), &mut delay::Ets)
+        .unwrap();
+    one_wire_bus.read_bytes(&mut buf, &mut delay::Ets).unwrap();
+    one_wire_bus.reset(&mut delay::Ets).unwrap();
 
-        info!("temperature buf: {:x?}", buf);
+    //     if buf != [0xff, 0xff] {
+    //         break;
+    //     }
 
-        if buf != [0xff, 0xff] {
-            break;
-        }
-
-        thread::sleep(Duration::from_millis(100));
-        info!("temperature buf was 0xffff, retrying");
-    }
+    //     thread::sleep(Duration::from_millis(100));
+    //     info!("temperature buf was 0xffff, retrying");
+    // }
 
     let temp: i16 = (i16::from(buf[1]) << 8) + i16::from(buf[0]);
-    info!("raw temperature: {:?}", temp);
+    info!("temperature: {buf:x?} {temp:?}");
+
     f32::from(temp) * 0.0625
 }
 
@@ -218,36 +203,6 @@ fn median(numbers: &[u16]) -> u16 {
     numbers.sort();
     let mid = numbers.len() / 2;
     numbers[mid]
-}
-
-#[allow(clippy::vec_init_then_push)]
-fn test_print() {
-    // Start simple
-    println!("Hello from Rust!");
-
-    // Check collections
-    let mut children = vec![];
-
-    children.push("foo");
-    children.push("bar");
-    println!("More complex print {children:?}");
-}
-
-#[allow(deprecated)]
-fn test_atomics() {
-    let a = AtomicUsize::new(0);
-    let v1 = a.compare_and_swap(0, 1, Ordering::SeqCst);
-    let v2 = a.swap(2, Ordering::SeqCst);
-
-    let (r1, r2) = unsafe {
-        // don't optimize our atomics out
-        let r1 = core::ptr::read_volatile(&v1);
-        let r2 = core::ptr::read_volatile(&v2);
-
-        (r1, r2)
-    };
-
-    println!("Result: {r1}, {r2}");
 }
 
 #[cfg(not(feature = "qemu"))]
