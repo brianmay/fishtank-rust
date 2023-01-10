@@ -173,24 +173,24 @@ fn read_temperature(
 ) -> f32 {
     let mut buf: [u8; 2] = [0; 2];
 
-    // loop {
-    one_wire_bus
-        .send_command(0x44, Some(&address), &mut delay::Ets)
-        .unwrap();
-    thread::sleep(Duration::from_millis(750));
-    one_wire_bus
-        .send_command(0xBE, Some(&address), &mut delay::Ets)
-        .unwrap();
-    one_wire_bus.read_bytes(&mut buf, &mut delay::Ets).unwrap();
-    one_wire_bus.reset(&mut delay::Ets).unwrap();
+    loop {
+        one_wire_bus
+            .send_command(0x44, Some(&address), &mut delay::Ets)
+            .unwrap();
+        thread::sleep(Duration::from_millis(750));
+        one_wire_bus
+            .send_command(0xBE, Some(&address), &mut delay::Ets)
+            .unwrap();
+        one_wire_bus.read_bytes(&mut buf, &mut delay::Ets).unwrap();
+        one_wire_bus.reset(&mut delay::Ets).unwrap();
 
-    //     if buf != [0xff, 0xff] {
-    //         break;
-    //     }
+        if buf != [0xff, 0xff] {
+            break;
+        }
 
-    //     thread::sleep(Duration::from_millis(100));
-    //     info!("temperature buf was 0xffff, retrying");
-    // }
+        thread::sleep(Duration::from_millis(100));
+        info!("temperature buf was 0xffff, retrying");
+    }
 
     let temp: i16 = (i16::from(buf[1]) << 8) + i16::from(buf[0]);
     info!("temperature: {buf:x?} {temp:?}");
