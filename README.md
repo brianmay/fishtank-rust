@@ -95,6 +95,7 @@ Highlights:
   - `http://192.168.71.1`
 
 - The monitor should output more or less the following:
+
 ```
 Hello, world from Rust!
 More complex print [foo, bar]
