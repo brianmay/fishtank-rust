@@ -31,8 +31,8 @@ use esp_idf_hal::peripheral;
 use esp_idf_hal::prelude::*;
 
 use esp_idf_sys::EspError;
-use smart_leds::{SmartLedsWrite, RGB, RGB8};
-use ws2812_esp32_rmt_driver::driver::color::{LedPixelColorGrb24, LedPixelColorGrbw32};
+use smart_leds::{SmartLedsWrite, RGB8};
+use ws2812_esp32_rmt_driver::driver::color::LedPixelColorGrb24;
 use ws2812_esp32_rmt_driver::LedPixelEsp32Rmt;
 
 const SSID: &str = env!("WIFI_SSID");
@@ -220,7 +220,7 @@ fn read_temperature(
         let temp = f32::from(temp) * 0.0625;
         info!("temperature: {buf:x?} {temp:?}");
 
-        if temp >= 0.0 && temp <= 40.0 {
+        if (0.0..=40.0).contains(&temp) {
             break temp;
         }
 
