@@ -172,15 +172,13 @@ fn read_temperature(
     address: Address,
 ) -> f32 {
     loop {
-        let mut buf: [u8; 1] = [0; 1];
         one_wire_bus
             .send_command(0x44, Some(&address), &mut delay::Ets)
             .unwrap();
 
         loop {
-            one_wire_bus.read_bytes(&mut buf, &mut delay::Ets).unwrap();
-            // info!("temperature (convert): {buf:x?}");
-            if buf[0] != 0 {
+            let v = one_wire_bus.read_bit(&mut delay::Ets).unwrap();
+            if v {
                 break;
             }
         }
