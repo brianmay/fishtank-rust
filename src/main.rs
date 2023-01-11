@@ -31,6 +31,9 @@ use esp_idf_hal::peripheral;
 use esp_idf_hal::prelude::*;
 
 use esp_idf_sys::EspError;
+use smart_leds::{SmartLedsWrite, RGB, RGB8};
+use ws2812_esp32_rmt_driver::driver::color::{LedPixelColorGrb24, LedPixelColorGrbw32};
+use ws2812_esp32_rmt_driver::LedPixelEsp32Rmt;
 
 const SSID: &str = env!("WIFI_SSID");
 const PASS: &str = env!("WIFI_PASS");
@@ -52,6 +55,9 @@ fn main() -> Result<()> {
     let peripherals = Peripherals::take().unwrap();
     #[allow(unused)]
     let pins = peripherals.pins;
+
+    let mut ws2812 = LedPixelEsp32Rmt::<RGB8, LedPixelColorGrb24>::new(0, 48).unwrap();
+    set_led(&mut ws2812, RGB8::new(0x01, 0, 0));
 
     let mqtt_url = env!("MQTT_URL");
 
@@ -96,12 +102,21 @@ fn main() -> Result<()> {
     let mut tds_buffer: VecDeque<u16> = VecDeque::with_capacity(COUNT);
     let mut last_publish = Instant::now() - Duration::from_secs(60);
     loop {
+        let enough_samples = tds_buffer.len() >= 15 - 1;
+        let colour = if enough_samples {
+            RGB8::new(0, 0x01, 0)
+        } else {
+            RGB8::new(0, 0, 0x01)
+        };
+
         info!("-----------------------");
+
+        set_led(&mut ws2812, colour);
         let distance = distance.load(Ordering::Relaxed);
         let temperature = read_temperature(&mut temperature_bus, address);
         let tds = read_tds(&mut adc, &mut a2, &mut tds_buffer, temperature);
 
-        if tds_buffer.len() >= 15 {
+        if enough_samples {
             let data = MqttData {
                 distance,
                 temperature,
@@ -117,9 +132,20 @@ fn main() -> Result<()> {
         } else {
             info!("waiting for more tds samples");
         }
+        set_led(&mut ws2812, RGB8::new(0, 0, 0));
 
         thread::sleep(Duration::from_secs(1));
     }
+}
+
+fn set_led<T>(ws2812: &mut T, pixel: T::Color)
+where
+    T: SmartLedsWrite,
+    T::Error: std::fmt::Debug,
+{
+    ws2812.write(vec![pixel].into_iter()).unwrap_or_else(|e| {
+        error!("error setting led: {:?}", e);
+    });
 }
 
 fn publish_data(data: MqttData, client: &mut EspMqttClient<ConnState<MessageImpl, EspError>>) {
