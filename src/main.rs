@@ -185,9 +185,10 @@ fn read_tds(
     let value_volts = f32::from(value_raw) * 3.3 / 4096.0;
     let coefficient = 1.0 + 0.02 * (temperature - 25.0);
     let compensation = value_volts / coefficient;
-    let tds = 133.42 * compensation * compensation * compensation
+    let tds = (133.42 * compensation * compensation * compensation
         - 255.86 * compensation * compensation
-        + 857.39 * compensation;
+        + 857.39 * compensation)
+        * 0.5;
     info!("TDS: {value_raw} {value_volts} {coefficient} {compensation} {tds}");
 
     tds
