@@ -181,14 +181,14 @@ fn read_tds(
     a2: &mut AdcChannelDriver<gpio::Gpio7, Atten0dB<adc::ADC1>>,
     temperature: f32,
 ) -> f32 {
-    let value = adc.read(a2).unwrap();
-    let medium = f32::from(value) * 3.3 / 4096.0;
+    let value_raw = adc.read(a2).unwrap();
+    let value_volts = f32::from(value_raw) * 3.3 / 4096.0;
     let coefficient = 1.0 + 0.02 * (temperature - 25.0);
-    let compensation = medium / coefficient;
+    let compensation = value_volts / coefficient;
     let tds = 133.42 * compensation * compensation * compensation
         - 255.86 * compensation * compensation
         + 857.39 * compensation;
-    info!("TDS: {value} {medium} {coefficient} {compensation} {tds}");
+    info!("TDS: {value_raw} {value_volts} {coefficient} {compensation} {tds}");
 
     tds
 }
