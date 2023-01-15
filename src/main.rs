@@ -98,8 +98,8 @@ fn main() -> Result<()> {
         });
     }
 
-    const COUNT: usize = 30;
-    let mut tds_buffer: VecDeque<u16> = VecDeque::with_capacity(COUNT);
+    let mut temperature_buffer: VecDeque<f32> = VecDeque::with_capacity(3);
+    let mut tds_buffer: VecDeque<f32> = VecDeque::with_capacity(30);
     let mut last_publish = Instant::now() - Duration::from_secs(60);
     loop {
         let enough_samples = tds_buffer.len() >= 15 - 1;
@@ -112,9 +112,17 @@ fn main() -> Result<()> {
         info!("-----------------------");
 
         set_led(&mut ws2812, colour);
+
+        {
+            let temperature = read_temperature(&mut temperature_bus, address);
+            let tds = read_tds(&mut adc, &mut a2, temperature);
+            add_sample(&mut temperature_buffer, temperature);
+            add_sample(&mut tds_buffer, tds);
+        }
+
         let distance = distance.load(Ordering::Relaxed);
-        let temperature = read_temperature(&mut temperature_bus, address);
-        let tds = read_tds(&mut adc, &mut a2, &mut tds_buffer, temperature);
+        let temperature = median(&temperature_buffer);
+        let tds = median(&tds_buffer);
 
         if enough_samples {
             let data = MqttData {
@@ -123,17 +131,18 @@ fn main() -> Result<()> {
                 tds,
             };
 
-            info!("{data:?}");
-
             if last_publish.elapsed() > Duration::from_secs(60) {
                 last_publish = Instant::now();
+                info!("publishing {data:?}");
                 publish_data(data, &mut client);
+            } else {
+                info!("read {data:?}");
             }
         } else {
             info!("waiting for more tds samples");
         }
-        set_led(&mut ws2812, RGB8::new(0, 0, 0));
 
+        set_led(&mut ws2812, RGB8::new(0, 0, 0));
         thread::sleep(Duration::from_secs(1));
     }
 }
@@ -170,25 +179,16 @@ fn read_distance(driver: &UartDriver) -> Option<u16> {
 fn read_tds(
     adc: &mut AdcDriver<adc::ADC1>,
     a2: &mut AdcChannelDriver<gpio::Gpio7, Atten0dB<adc::ADC1>>,
-    tdc_buffer: &mut VecDeque<u16>,
     temperature: f32,
 ) -> f32 {
     let value = adc.read(a2).unwrap();
-    info!("TDS (raw): {}", value);
-    if tdc_buffer.len() >= tdc_buffer.capacity() {
-        tdc_buffer.pop_front();
-    }
-    tdc_buffer.push_back(value);
-
-    let medium = median(tdc_buffer.make_contiguous());
-    info!("TDS (medium): {tdc_buffer:?} {}", medium);
-    let medium = f32::from(medium) * 3.3 / 4096.0;
+    let medium = f32::from(value) * 3.3 / 4096.0;
     let coefficient = 1.0 + 0.02 * (temperature - 25.0);
     let compensation = medium / coefficient;
     let tds = 133.42 * compensation * compensation * compensation
         - 255.86 * compensation * compensation
         + 857.39 * compensation;
-    info!("TDS: {medium} {coefficient} {compensation} {tds}");
+    info!("TDS: {value} {medium} {coefficient} {compensation} {tds}");
 
     tds
 }
@@ -229,9 +229,16 @@ fn read_temperature(
     }
 }
 
-fn median(numbers: &[u16]) -> u16 {
-    let mut numbers: Vec<u16> = numbers.to_vec();
-    numbers.sort();
+fn add_sample(buffer: &mut VecDeque<f32>, sample: f32) {
+    if buffer.len() >= buffer.capacity() {
+        buffer.pop_front();
+    }
+    buffer.push_back(sample);
+}
+
+fn median(buffer: &VecDeque<f32>) -> f32 {
+    let mut numbers: Vec<_> = buffer.clone().make_contiguous().to_vec();
+    numbers.sort_by(|a, b| a.total_cmp(b));
     let mid = numbers.len() / 2;
     numbers[mid]
 }
