@@ -65,9 +65,13 @@ fn main() -> Result<()> {
     let _wifi = wifi(peripherals.modem, sysloop).unwrap();
     let mut client = get_client(mqtt_url).unwrap();
 
+    // Set processed data mode.
+    let mut distance_tx = PinDriver::output(pins.gpio17).unwrap();
+    distance_tx.set_high().unwrap();
+
     let distance_driver = UartDriver::new(
         peripherals.uart1,
-        pins.gpio17,
+        pins.gpio16,
         pins.gpio18,
         Option::<gpio::Gpio21>::None,
         Option::<gpio::Gpio21>::None,
@@ -94,6 +98,8 @@ fn main() -> Result<()> {
         thread::spawn(move || loop {
             if let Some(value) = read_distance(&distance_driver) {
                 distance.store(value, Ordering::Relaxed);
+            } else {
+                error!("Failed to read distance");
             }
         });
     }
