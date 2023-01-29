@@ -106,7 +106,7 @@ fn main() -> Result<()> {
 
     let mut temperature_buffer: VecDeque<f32> = VecDeque::with_capacity(3);
     let mut tds_buffer: VecDeque<f32> = VecDeque::with_capacity(30);
-    let mut last_publish = Instant::now() - Duration::from_secs(60);
+    let mut last_publish = Instant::now();
     loop {
         let enough_samples = tds_buffer.len() >= 15 - 1;
         let colour = if enough_samples {
