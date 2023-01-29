@@ -130,22 +130,20 @@ fn main() -> Result<()> {
         let temperature = median(&temperature_buffer);
         let tds = median(&tds_buffer);
 
-        if enough_samples {
-            let data = MqttData {
-                distance,
-                temperature,
-                tds,
-            };
+        let data = MqttData {
+            distance,
+            temperature,
+            tds,
+        };
 
-            if last_publish.elapsed() > Duration::from_secs(60) {
-                last_publish = Instant::now();
-                info!("publishing {data:?}");
-                publish_data(data, &mut client);
-            } else {
-                info!("read {data:?}");
-            }
+        if !enough_samples {
+            info!("preliminary {data:?}");
+        } else if last_publish.elapsed() > Duration::from_secs(60) {
+            last_publish = Instant::now();
+            info!("publishing {data:?}");
+            publish_data(data, &mut client);
         } else {
-            info!("waiting for more tds samples");
+            info!("read {data:?}");
         }
 
         set_led(&mut ws2812, RGB8::new(0, 0, 0));
